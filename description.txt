@@ -1,0 +1,290 @@
+# Wordfeud Player Technical Documentation
+
+## Project Overview
+Wordfeud Player is a Python-based assistant tool designed to analyze and assist in playing Wordfeud, a word game similar to Scrabble. The system employs computer vision and optical character recognition (OCR) techniques to read game states from screenshots and potentially suggest optimal moves.
+
+Key Directories:
+- `ocr/`: Contains all OCR-related code, with template_matcher.py being the current implementation
+- `wordfeudplayer/`: Core game logic including board representation and word validation
+- `test/`: Test suite for various components
+- `letter_templates/`: Pre-processed letter template images used for OCR
+- `debug_output/`: Generated debug images showing rack detection results
+- `screens/`: Test screenshots for development and testing
+
+### Core Components
+
+1. OCR Engine (ocr/)
+   - Utilizes OpenCV (opencv-python 4.8.1.78) for image processing
+   - Integrates Tesseract OCR (pytesseract 0.3.10+) for text recognition
+   - Implements screenshot analysis for game board state extraction
+   - Location: ocr/screenshot_reader.py
+
+2. Game Logic (wordfeudplayer/)
+   - Contains core game mechanics and decision-making algorithms
+   - Manages word validation and move generation
+   - Handles game state representation and move evaluation
+
+3. Visualization (visualization/)
+   - Match visualization for template matching results
+   - Board visualization for letter detections
+   - Word placement visualization for moves
+   - Custom visualizers for different aspects of the game
+
+4. Tests (test/)
+   - Dedicated test directory for all test files
+   - Includes test_parsing.py for board detection verification
+   - Supports screenshot-based test cases
+   - Validates OCR accuracy and board parsing
+
+5. Resources
+   - screens/: Directory for game screenshots
+   - letter_templates/: Reference images for letter recognition
+   - utils/: Shared utility functions
+
+### Key Dependencies
+- numpy 1.24.3: Numerical computations and array operations
+- opencv-python 4.8.1.78: Computer vision and image processing
+- pillow 11.0.0: Image manipulation and processing
+- pytesseract 0.3.10+: Optical Character Recognition
+- matplotlib 3.8.2: Visualization and debugging
+- packaging 24.2: Package management utilities
+
+## Implementation Details
+
+### Main Application (main.py)
+
+1. Core Functionality
+   - Screenshot processing with error handling
+   - Automatic screenshot discovery in screens/
+   - Support for multiple image formats (.jpg, .jpeg, .png)
+   - Comprehensive board state visualization
+   - Integration of all components
+
+2. WordfeudPlayer Class
+   - Centralized game management
+   - Screenshot analysis and processing
+   - Results visualization
+   - Board state representation
+   - Move suggestion and evaluation
+
+3. Board State Display
+   - Formatted 15x15 grid output
+   - Example format:
+     ```python
+     state = [
+         "               ",  # Empty row
+         "               ",  # Empty row
+         "            d  ",  # Row with letter
+         "            r  ",
+         "          m ärm",
+         # ... remaining rows
+     ]
+     ```
+
+### Rack Detection Algorithm
+
+The rack detection algorithm is designed to find the player's tile rack in Wordfeud screenshots. The algorithm uses the game board's position as a reference point and falls back to screen-based measurements when necessary.
+
+Key characteristics:
+- Rack is always located below the game board
+- Contains 7 square tiles of equal size
+- Has a 10px margin on each side of the screen
+- Rack height equals tile width (square tiles)
+
+Algorithm steps:
+1. Detect Board Boundaries
+   - Identify blue bonus squares (BGR range: [150-255, 50-150, 0-100])
+   - Identify burgundy bonus squares (BGR range: [0-100, 0-100, 100-255])
+   - Create combined mask of bonus squares
+   - Apply morphological operations to remove noise
+   - Find min/max coordinates to determine board boundaries
+   - Make selection square by using max(width, height)
+
+2. Calculate Rack Dimensions
+   - Rack width = screen_width - 20px (10px margin on each side)
+   - Tile size = rack_width // 7 (integer division)
+   - Rack height = tile_size (square tiles)
+
+3. Define Search Area
+   - Primary: Start 10px below board's bottom edge (max_y + 10)
+   - Fallback: Use bottom third of screen if board detection fails
+   - Search until bottom of screen
+
+4. Find Rack Position
+   - Convert search area to grayscale
+   - For each row in search area:
+     * Calculate mean pixel intensity
+   - Find row with maximum intensity
+   - Center rack vertically on this row
+
+5. Tile Recognition
+   - Segment rack into 7 equal tiles
+   - For each tile:
+     a. Primary: OCR detection with Tesseract
+        * PSM mode 10 (single character)
+        * Swedish language
+        * Confidence threshold: 5%
+        * Character whitelist: A-Z, ÅÄÖ
+     b. Secondary: Black/white pixel ratio analysis
+        * Empty tile ('_'): >95% black pixels
+        * Wildcard ('*'): >95% white pixels
+        * Unclear ('O'): Other cases
+   - Apply preprocessing:
+     * Grayscale conversion
+     * Binary thresholding (127/255)
+     * Resize to 40px height
+     * 2x2 pixel erosion
+
+6. Validation
+   - Ensure rack is near bottom of screen (within 50px)
+   - Return None if validation fails (empty rack)
+   - Return {x, y, width, height} if rack is found
+
+Implementation details:
+- Uses shared board detection code from ScreenshotReader
+- Handles both PNG and JPEG formats
+- Image dimensions: 2532x1170 pixels (tested on iPhone screenshots)
+- Bonus square detection:
+  * Blue squares: 44,000-88,000 pixels
+  * Burgundy squares: 5,000-37,000 pixels
+- Debug visualization available through debug_save_rack_crop()
+
+The algorithm has been extensively tested on various game states:
+- Empty and full racks
+- Different board configurations
+- Multiple device screenshots
+- Both PNG and JPEG formats
+
+Fallback mechanism ensures reliability:
+- Primary: Uses board position as reference
+- Secondary: Falls back to screen-based measurements
+- Maintains consistent results across all test cases
+
+### OCR Pipeline
+
+1. Screenshot Analysis
+   - Automatic board boundary detection
+   - Color masking for bonus squares
+   - Dynamic grid calculation
+   - High-confidence letter recognition
+   - Support for Swedish characters
+
+2. Board Parsing
+   - Converts physical coordinates to grid positions
+   - Maintains consistent 15-character string format
+   - Handles edge cases and boundary conditions
+   - Sorts detected letters by position
+
+3. Letter Detection
+   - Three-tier detection system:
+     a. Primary: OCR with Tesseract
+     b. Secondary: Black/white pixel ratio analysis
+     c. Fallback: Special character detection
+   - Confidence scoring system
+   - Position tracking with bounding boxes
+   - Support for special characters (å, ä, ö)
+
+4. Preprocessing Pipeline
+   - Grayscale conversion
+   - Binary thresholding (127/255)
+   - Resize to 40px height
+   - 2x2 pixel erosion
+   - Margin removal:
+     * Top: 5%
+     * Bottom: 15%
+     * Left: 15%
+     * Right: 30%
+
+5. Error Handling
+   - Exception handling for image reading
+   - Graceful failure modes
+   - Informative error messages
+   - Fallback detection strategies
+
+## Development and Testing
+
+### Project Setup
+1. Development Environment
+   - Python 3.10 or higher required
+   - Virtual environment (venv/) recommended
+   - setup.py for package management
+   - Proper Python package structure with __init__.py files
+
+2. Test Infrastructure
+   - Dedicated test/ directory
+   - Screenshot-based test cases
+   - OCR accuracy validation
+   - Board parsing verification
+   - Automated test execution
+
+3. Quality Assurance
+   - Type hints and documentation
+   - Error handling and validation
+   - Consistent code formatting
+   - Comprehensive logging
+
+### Performance Considerations
+- Efficient board detection using color masking
+- Optimized template matching
+- Memory-efficient board representation
+- Fast parsing for real-time assistance
+
+## Running Python Files
+To run Python files in this project, use the Python interpreter directly from the virtual environment:
+
+```bash
+/Users/Testsson/Projects/Wordfeud-Player/venv/bin/python your_script.py
+```
+
+For example, to run the rack detection test:
+```bash
+/Users/Testsson/Projects/Wordfeud-Player/venv/bin/python test/test_rack.py
+```
+
+This ensures the correct Python version (3.10) and environment is used.
+
+## Usage
+
+1. Screenshot Processing
+   ```python
+   # Initialize player
+   player = WordfeudPlayer()
+   
+   # Process screenshot
+   results = player.process_screenshot("screens/game.jpg")
+   
+   # Display results
+   player.visualize_results(results)
+   ```
+
+2. Directory Structure
+   ```
+   Wordfeud-Player/
+   ├── main.py
+   ├── setup.py
+   ├── ocr/
+   ├── test/
+   ├── screens/
+   ├── utils/
+   └── visualization/
+   ```
+
+## Future Improvements
+
+1. Enhanced Recognition
+   - Additional language support
+   - Improved template matching
+   - Adaptive confidence thresholds
+   - Error correction mechanisms
+
+2. Performance Optimization
+   - Parallel processing for letter detection
+   - Cached template matching
+   - Memory usage optimization
+   - Faster board parsing algorithms
+
+3. Testing Expansion
+   - Additional test cases
+   - Performance benchmarks
+   - Coverage improvements
+   - Integration tests
