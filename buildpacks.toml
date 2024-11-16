@@ -1,0 +1,5 @@
+[[buildpacks]]
+uri = "heroku-community/apt"
+
+[[buildpacks]]
+uri = "heroku/python"
